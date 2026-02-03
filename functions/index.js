@@ -41,7 +41,6 @@ exports.onMachineUpdate = onDocumentUpdated(
           });
         });
 
-
         await sendPushToUser(
             after.reservedByUid,
             "⏳ Machine réservée",
@@ -73,7 +72,6 @@ exports.onScheduledNotificationCreated =
 onDocumentCreated("scheduled_notifications/{notifId}", async (event) => {
   const data = event.data.data();
   if (!data) return;
-
   const now = new Date();
   const sendAt = data.sendAt.toDate();
   const delay = sendAt - now;
