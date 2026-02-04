@@ -43,8 +43,8 @@ exports.onMachineUpdate = onDocumentUpdated(
 
         await sendPushToUser(
             after.reservedByUid,
-            "⏳ Machine réservée",
-            "Votre réservation est active",
+            "⏳ Машина забронирована",
+            "Ваша бронь активна",
         );
       }
     },
@@ -133,18 +133,19 @@ onDocumentCreated("scheduled_notifications/{notifId}", async (event) => {
 // eslint-disable-next-line require-jsdoc
 function getTitle(type) {
   switch (type) {
-    case "REMINDER_5_MIN": return "⏳ Plus que 5 minutes";
-    case "REMINDER_2_MIN": return "⏳ Plus que 2 minutes";
-    case "END": return "✅ Temps écoulé";
+    case "REMINDER_5_MIN": return "⏳ Осталось 5 минут";
+    case "REMINDER_2_MIN": return "⏳ Осталось 2 минуты";
+    case "END": return "✅ Время вышло";
   }
 }
 
 // eslint-disable-next-line require-jsdoc
 function getBody(type) {
   switch (type) {
-    case "REMINDER_5_MIN": return "Votre machine se termine dans 5 minutes";
-    case "REMINDER_2_MIN": return "Votre machine se termine dans 2 minutes";
-    case "END": return "Votre machine est maintenant libre";
+    case "REMINDER_5_MIN": return "До окончания работы машины осталось 5 минут";
+    case "REMINDER_2_MIN":
+      return "До окончания работы машины осталось 2 минуты";
+    case "END": return "Машина теперь свободна";
   }
 }
 
