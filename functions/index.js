@@ -34,6 +34,9 @@ exports.onMachineUpdate = onDocumentUpdated(
           await admin.firestore().collection("scheduled_notifications").add({
             machineId,
             dormId,
+            countryId: event.params.countryId,
+            cityId: event.params.cityId,
+            univId: event.params.univId,
             userId,
             type: n.type,
             sendAt: n.sendAt,
@@ -80,22 +83,6 @@ onDocumentCreated("scheduled_notifications/{notifId}", async (event) => {
     // envoyer la notification maintenant
     await sendPush(data.userId, getTitle(data.type), getBody(data.type));
 
-    if (data.type === "END") {
-      // libérer machine si pas déjà libérée
-      const machineRef = admin.firestore()
-          .doc(`dorms/${data.dormId}/machines/${data.machineId}`);
-      const machineSnap = await machineRef.get();
-      const machine = machineSnap.data();
-      if (machine && machine.statut !== "libre") {
-        await machineRef.update({
-          statut: "libre",
-          reservedByUid: null,
-          reservedByName: null,
-          reservationEndTime: null,
-        });
-      }
-    }
-
     // marquer la notification comme envoyée ou supprimer
     await admin.firestore().collection("scheduled_notifications")
         .doc(event.params.notifId).delete();
@@ -104,7 +91,7 @@ onDocumentCreated("scheduled_notifications/{notifId}", async (event) => {
     const tasksClient = new CloudTasksClient();
 
     if (delay > 0) {
-      const project = process.env.GCP_PROJECT;
+      const project = process.env.GCLOUD_PROJECT;
       const location = "us-central1";
       const queue = "scheduled-notifications";
       const url = `https://us-central1-${project}.cloudfunctions.net/handleScheduledTask`;
