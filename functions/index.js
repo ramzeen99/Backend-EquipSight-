@@ -1,6 +1,7 @@
 const {onDocumentUpdated} = require("firebase-functions/v2/firestore");
 const {setGlobalOptions} = require("firebase-functions/v2");
 const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onRequest} = require("firebase-functions/v2/https");
 const admin = require("firebase-admin");
 admin.initializeApp();
 setGlobalOptions({maxInstances: 10});
@@ -30,7 +31,7 @@ exports.onMachineUpdate = onDocumentUpdated(
             sendAt: new Date(reservationEnd.getTime() + 30*1000)},
         ];
 
-        notifications.forEach(async (n) => {
+        for (const n of notifications) {
           await admin.firestore().collection("scheduled_notifications").add({
             machineId,
             dormId,
@@ -42,7 +43,7 @@ exports.onMachineUpdate = onDocumentUpdated(
             sendAt: n.sendAt,
             status: "pending",
           });
-        });
+        }
 
         await sendPushToUser(
             after.reservedByUid,
@@ -136,45 +137,54 @@ function getBody(type) {
   }
 }
 
-exports.handleScheduledTask = async (req, res) => {
-  const {notifId} = req.body;
-  if (!notifId) return res.status(400).send("Missing notifId");
+exports.handleScheduledTask = onRequest(
+    {region: "us-central1"},
+    async (req, res) => {
+      const {notifId} = req.body;
+      if (!notifId) return res.status(400).send("Missing notifId");
 
-  const notifRef = admin.firestore().
-      collection("scheduled_notifications").doc(notifId);
-  const notifSnap = await notifRef.get();
-  if (!notifSnap.exists) return res.status(404).send("Notification not found");
+      const notifRef = admin.firestore()
+          .collection("scheduled_notifications")
+          .doc(notifId);
 
-  const data = notifSnap.data();
-  if (!data) return res.status(404).send("No data");
+      const notifSnap = await notifRef.get();
+      if (!notifSnap.exists) {
+        return res.status(404).send("Notification not found");
+      }
 
-  // Envoyer notification
-  await sendPush(data.userId, getTitle(data.type), getBody(data.type));
+      const data = notifSnap.data();
 
-  // Si type END ou AGGRESSIVE => libérer machine
-  if (data.type === "END" || data.type === "AGGRESSIVE") {
-    const machineRef = admin
-        .firestore()
-        // eslint-disable-next-line max-len
-        .doc(`countries/${data.countryId}/cities/${data.cityId}/universities/${data.univId}/dorms/${data.dormId}/machines/${data.machineId}`);
-    const machineSnap = await machineRef.get();
-    const machine = machineSnap.data();
-    if (machine && machine.statut !== "libre") {
-      await machineRef.update({
-        statut: "libre",
-        reservedByUid: null,
-        reservedByName: null,
-        reservationEndTime: null,
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    }
-  }
+      await sendPush(
+          data.userId,
+          getTitle(data.type),
+          getBody(data.type),
+      );
 
-  // Supprimer la notification
-  await notifRef.delete();
+      if (data.type === "END" || data.type === "AGGRESSIVE") {
+        const machineRef = admin.firestore().doc(
+            `countries/${data.countryId}/cities/${data.cityId}
+            /universities/${data.univId}/dorms/${data.dormId}
+            /machines/${data.machineId}`,
+        );
 
-  return res.status(200).send("Task executed");
-};
+        const machineSnap = await machineRef.get();
+        const machine = machineSnap.data();
+
+        if (machine && machine.statut !== "libre") {
+          await machineRef.update({
+            statut: "libre",
+            reservedByUid: null,
+            reservedByName: null,
+            reservationEndTime: null,
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+      }
+
+      await notifRef.delete();
+      return res.status(200).send("Task executed");
+    },
+);
 
 // eslint-disable-next-line require-jsdoc
 async function sendPushToUser(userId, title, body) {
