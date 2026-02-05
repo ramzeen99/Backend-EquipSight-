@@ -149,19 +149,44 @@ function getBody(type) {
   }
 }
 
-exports.handleScheduledTask = async (payload) => {
-  if (payload.action === "FORCE_RELEASE") {
+exports.handleScheduledTask = async (req, res) => {
+  const {notifId} = req.body;
+  if (!notifId) return res.status(400).send("Missing notifId");
+
+  const notifRef = admin.firestore().
+      collection("scheduled_notifications").doc(notifId);
+  const notifSnap = await notifRef.get();
+  if (!notifSnap.exists) return res.status(404).send("Notification not found");
+
+  const data = notifSnap.data();
+  if (!data) return res.status(404).send("No data");
+
+  // Envoyer notification
+  await sendPush(data.userId, getTitle(data.type), getBody(data.type));
+
+  // Si type END ou AGGRESSIVE => libérer machine
+  if (data.type === "END" || data.type === "AGGRESSIVE") {
     const machineRef = admin
         .firestore()
-        .doc(`dorms/${payload.dormId}/machines/${payload.machineId}`);
-
-    await machineRef.update({
-      statut: "libre",
-      reservedBy: null,
-      reservationStart: null,
-      reservationEndTime: null,
-    });
+        // eslint-disable-next-line max-len
+        .doc(`countries/${data.countryId}/cities/${data.cityId}/universities/${data.univId}/dorms/${data.dormId}/machines/${data.machineId}`);
+    const machineSnap = await machineRef.get();
+    const machine = machineSnap.data();
+    if (machine && machine.statut !== "libre") {
+      await machineRef.update({
+        statut: "libre",
+        reservedByUid: null,
+        reservedByName: null,
+        reservationEndTime: null,
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
   }
+
+  // Supprimer la notification
+  await notifRef.delete();
+
+  return res.status(200).send("Task executed");
 };
 
 // eslint-disable-next-line require-jsdoc
