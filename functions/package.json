@@ -14,8 +14,14 @@
   },
   "main": "index.js",
   "dependencies": {
+<<<<<<< HEAD
     "firebase-admin": "^13.6.0",
     "firebase-functions": "^5.1.0"
+=======
+    "@google-cloud/tasks": "^6.2.1",
+    "firebase-admin": "^13.6.0",
+    "firebase-functions": "^7.0.5"
+>>>>>>> 60e0275dc2ae022b20b64798db17abc73ee197b4
   },
   "devDependencies": {
     "eslint": "^8.15.0",
