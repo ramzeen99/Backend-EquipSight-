@@ -206,6 +206,6 @@ async function sendPushToUser(userId, title, body) {
       title,
       body,
     },
-  }); 
+  });
 }
 
