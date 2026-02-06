@@ -55,6 +55,54 @@ exports.onMachineUpdate = onDocumentUpdated(
     },
 );
 
+exports.onMachineUpdate = onDocumentUpdated(
+    // eslint-disable-next-line max-len
+    "countries/{countryId}/cities/{cityId}/universities/{univId}/dorms/{dormId}/machines/{machineId}",
+    async (event) => {
+      const before = event.data.before.data();
+      const after = event.data.after.data();
+
+      if (before.statut !== "reservee" && after.statut === "reservee") {
+        await sendPushToUser(
+            after.reservedByUid,
+            "⏳ Машина забронирована",
+            "Ваша бронь активна",
+        );
+      }
+
+      if (
+        before.statut !== "occupe" &&
+        after.statut === "occupe" &&
+        after.endTime
+      ) {
+        const endTime = after.endTime.toDate();
+        const userId = after.utilisateurActuelUid;
+
+        const notifications = [
+          // eslint-disable-next-line max-len
+          {type: "REMINDER_5_MIN", sendAt: new Date(endTime.getTime() - 5 * 60000)},
+          // eslint-disable-next-line max-len
+          {type: "REMINDER_2_MIN", sendAt: new Date(endTime.getTime() - 2 * 60000)},
+          {type: "END", sendAt: endTime},
+          {type: "AGGRESSIVE", sendAt: new Date(endTime.getTime() + 30 * 1000)},
+          // eslint-disable-next-line max-len
+          {type: "AUTO_RELEASE", sendAt: new Date(endTime.getTime() + 60 * 1000)},
+        ];
+
+        for (const n of notifications) {
+          await admin.firestore().collection("scheduled_notifications").add({
+            ...event.params,
+            machineId: event.params.machineId,
+            userId,
+            type: n.type,
+            sendAt: n.sendAt,
+            status: "pending",
+          });
+        }
+      }
+    },
+);
+
 // eslint-disable-next-line require-jsdoc
 async function sendPush(userId, title, body) {
   const tokensSnap = await admin
@@ -122,19 +170,25 @@ onDocumentCreated("scheduled_notifications/{notifId}", async (event) => {
 // eslint-disable-next-line require-jsdoc
 function getTitle(type) {
   switch (type) {
-    case "REMINDER_5_MIN": return "⏳ Осталось 5 минут";
-    case "REMINDER_2_MIN": return "⏳ Осталось 2 минуты";
-    case "END": return "✅ Время вышло";
+    case "REMINDER_5_MIN": return "⏳ 5 minutes restantes";
+    case "REMINDER_2_MIN": return "⏳ 2 minutes restantes";
+    case "END": return "⛔ Temps écoulé";
+    case "AGGRESSIVE": return "⚠️ Attention";
   }
 }
 
 // eslint-disable-next-line require-jsdoc
 function getBody(type) {
   switch (type) {
-    case "REMINDER_5_MIN": return "До окончания работы машины осталось 5 минут";
+    case "REMINDER_5_MIN":
+      return "Il reste 5 minutes avant la fin du cycle";
     case "REMINDER_2_MIN":
-      return "До окончания работы машины осталось 2 минуты";
-    case "END": return "Машина теперь свободна";
+      return "Il reste 2 minutes avant la fin du cycle";
+    case "END":
+      return "Le cycle est terminé. Veuillez libérer la machine";
+    case "AGGRESSIVE":
+      // eslint-disable-next-line max-len
+      return "La machine sera libérée automatiquement dans 30 secondes pour les autres personnes";
   }
 }
 
@@ -180,6 +234,21 @@ exports.handleScheduledTask = onRequest(
             lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
           });
         }
+      }
+
+      if (data.type === "AUTO_RELEASE") {
+        const machineRef = admin.firestore().doc(
+        // eslint-disable-next-line max-len
+            `countries/${data.countryId}/cities/${data.cityId}/universities/${data.univId}/dorms/${data.dormId}/machines/${data.machineId}`,
+        );
+
+        await machineRef.update({
+          statut: "libre",
+          utilisateurActuel: null,
+          startTime: null,
+          endTime: null,
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        });
       }
 
       await notifRef.delete();
