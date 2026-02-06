@@ -13,54 +13,6 @@ exports.onMachineUpdate = onDocumentUpdated(
     async (event) => {
       const before = event.data.before.data();
       const after = event.data.after.data();
-      const machineId = event.params.machineId;
-      const dormId = event.params.dormId;
-      const userId = after.reservedByUid;
-
-      if (before.statut !== "reservee" && after.statut === "reservee") {
-        const reservationStart = new Date();
-        const reservationEnd = new Date(reservationStart.getTime() + 5*60000);
-
-        const notifications = [
-          {type: "REMINDER_5_MIN",
-            sendAt: new Date(reservationEnd.getTime() - 5*60000)},
-          {type: "REMINDER_2_MIN",
-            sendAt: new Date(reservationEnd.getTime() - 2*60000)},
-          {type: "END",
-            sendAt: new Date(reservationEnd.getTime())},
-          {type: "AGGRESSIVE",
-            sendAt: new Date(reservationEnd.getTime() + 30*1000)},
-        ];
-
-        for (const n of notifications) {
-          await admin.firestore().collection("scheduled_notifications").add({
-            machineId,
-            dormId,
-            countryId: event.params.countryId,
-            cityId: event.params.cityId,
-            univId: event.params.univId,
-            userId,
-            type: n.type,
-            sendAt: n.sendAt,
-            status: "pending",
-          });
-        }
-
-        await sendPushToUser(
-            after.reservedByUid,
-            "⏳ Машина забронирована",
-            "Ваша бронь активна",
-        );
-      }
-    },
-);
-
-exports.onMachineUpdate = onDocumentUpdated(
-    // eslint-disable-next-line max-len
-    "countries/{countryId}/cities/{cityId}/universities/{univId}/dorms/{dormId}/machines/{machineId}",
-    async (event) => {
-      const before = event.data.before.data();
-      const after = event.data.after.data();
 
       if (before.statut !== "reservee" && after.statut === "reservee") {
         await sendPushToUser(
@@ -214,27 +166,6 @@ exports.handleScheduledTask = onRequest(
           getTitle(data.type),
           getBody(data.type),
       );
-
-      if (data.type === "END" || data.type === "AGGRESSIVE") {
-        const machineRef = admin.firestore().doc(
-            `countries/${data.countryId}/cities/${data.cityId}
-            /universities/${data.univId}/dorms/${data.dormId}
-            /machines/${data.machineId}`,
-        );
-
-        const machineSnap = await machineRef.get();
-        const machine = machineSnap.data();
-
-        if (machine && machine.statut !== "libre") {
-          await machineRef.update({
-            statut: "libre",
-            reservedByUid: null,
-            reservedByName: null,
-            reservationEndTime: null,
-            lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-          });
-        }
-      }
 
       if (data.type === "AUTO_RELEASE") {
         const machineRef = admin.firestore().doc(
