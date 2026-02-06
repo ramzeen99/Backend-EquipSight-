@@ -55,24 +55,6 @@ exports.onMachineUpdate = onDocumentUpdated(
     },
 );
 
-// eslint-disable-next-line require-jsdoc
-async function sendPush(userId, title, body) {
-  const tokensSnap = await admin
-      .firestore()
-      .collection("users")
-      .doc(userId)
-      .collection("fcmTokens")
-      .get();
-
-  if (tokensSnap.empty) return;
-  const tokens = tokensSnap.docs.map((doc) => doc.id);
-
-  await admin.messaging().sendEachForMulticast({
-    tokens,
-    notification: {title, body},
-  });
-}
-
 exports.onScheduledNotificationCreated =
 onDocumentCreated("scheduled_notifications/{notifId}", async (event) => {
   const data = event.data.data();
@@ -83,7 +65,7 @@ onDocumentCreated("scheduled_notifications/{notifId}", async (event) => {
 
   if (delay <= 0) {
     // envoyer la notification maintenant
-    await sendPush(data.userId, getTitle(data.type), getBody(data.type));
+    await sendPushToUser(data.userId, getTitle(data.type), getBody(data.type));
 
     // marquer la notification comme envoyée ou supprimer
     await admin.firestore().collection("scheduled_notifications")
@@ -122,10 +104,12 @@ onDocumentCreated("scheduled_notifications/{notifId}", async (event) => {
 // eslint-disable-next-line require-jsdoc
 function getTitle(type) {
   switch (type) {
-    case "REMINDER_5_MIN": return "⏳ 5 minutes restantes";
-    case "REMINDER_2_MIN": return "⏳ 2 minutes restantes";
-    case "END": return "⛔ Temps écoulé";
-    case "AGGRESSIVE": return "⚠️ Attention";
+    case "REMINDER_5_MIN": return "⏳ Осталось 5 минут";
+    case "REMINDER_2_MIN": return "⏳ Осталось 2 минуты";
+    case "END": return "⛔ Время вышло";
+    case "AGGRESSIVE": return "⚠️ Внимание";
+    case "AUTO_RELEASE":
+      return "🔓 Машина освобождена автоматически";
   }
 }
 
@@ -133,14 +117,17 @@ function getTitle(type) {
 function getBody(type) {
   switch (type) {
     case "REMINDER_5_MIN":
-      return "Il reste 5 minutes avant la fin du cycle";
+      return "До окончания цикла осталось 5 минут";
     case "REMINDER_2_MIN":
-      return "Il reste 2 minutes avant la fin du cycle";
+      return "До окончания цикла осталось 2 минуты";
     case "END":
-      return "Le cycle est terminé. Veuillez libérer la machine";
+      return "Цикл завершён. Пожалуйста, освободите машину";
     case "AGGRESSIVE":
       // eslint-disable-next-line max-len
-      return "La machine sera libérée automatiquement dans 30 secondes pour les autres personnes";
+      return "Машина будет автоматически освобождена через 30 секунд для других пользователей";
+    case "AUTO_RELEASE":
+      // eslint-disable-next-line max-len
+      return "Машина была освобождена и теперь доступна для других пользователей";
   }
 }
 
@@ -161,7 +148,7 @@ exports.handleScheduledTask = onRequest(
 
       const data = notifSnap.data();
 
-      await sendPush(
+      await sendPushToUser(
           data.userId,
           getTitle(data.type),
           getBody(data.type),
