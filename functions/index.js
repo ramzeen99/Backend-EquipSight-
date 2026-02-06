@@ -3,7 +3,6 @@ const {setGlobalOptions} = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
-
 setGlobalOptions({maxInstances: 10});
 
 exports.onMachineUpdate = onDocumentUpdated(
@@ -13,58 +12,63 @@ exports.onMachineUpdate = onDocumentUpdated(
       const before = event.data.before.data();
       const after = event.data.after.data();
 
-      if (before.statut !== "reservee" && after.statut === "reservee") {
-        console.log("🔔 Nouvelle réservation détectée :", after);
+      if (before.statut !== "occupe" && after.statut === "occupe") {
+        console.log("🚀 Cycle machine démarré :", after);
 
-        await scheduleReservationNotifications(after, event);
+        await scheduleCycleNotifications(after, event.params);
       }
     },
 );
 
 exports.handleScheduledTask = async (payload) => {
-  if (payload.action === "FORCE_RELEASE") {
-    const machineRef = admin
-        .firestore()
-        .doc(`dorms/${payload.dormId}/machines/${payload.machineId}`);
+  if (payload.action !== "FORCE_RELEASE") return;
 
-    await machineRef.update({
-      statut: "libre",
-      reservedBy: null,
-      reservationStart: null,
-      reservationEndTime: null,
-    });
+  // eslint-disable-next-line max-len
+  const machineRef = admin.firestore().doc(`countries/${payload.countryId}/cities/${payload.cityId}/universities/${payload.univId}/dorms/${payload.dormId}/machines/${payload.machineId}`);
 
-    await sendPush(
-        "✅ Machine libérée",
-        "La machine est maintenant disponible",
-    );
-  }
+  await machineRef.update({
+    statut: "libre",
+    utilisateurActuel: null,
+    startTime: null,
+    endTime: null,
+    reservedByName: null,
+    reservationEndTime: null,
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await sendPush(
+      "✅ Машина освобождена",
+      "Машина теперь доступна для других пользователей",
+  );
 };
 
 /**
  * Programme les notifications liées à une réservation de machine
  * @param {Object} machine Données de la machine
- * @param {Object} context Contexte Firestore
+ * @param {Object} params Contexte Firestore
  */
-async function scheduleReservationNotifications(machine, context) {
-  const end = machine.reservationEndTime.toDate();
+async function scheduleCycleNotifications(machine, params) {
+  if (!machine.endTime) return;
 
-  // rappels
-  await schedulePush(end - 5 * 60 * 1000, "⏳ 5 minutes restantes");
-  await schedulePush(end - 2 * 60 * 1000, "⚠️ 2 minutes restantes");
-  await schedulePush(end, "⏱️ Temps écoulé");
+  const end = machine.endTime.toDate().getTime();
 
-  // notification agressive
+  await schedulePush(end - 5 * 60 * 1000, "⏳ Осталось 5 минут");
+  await schedulePush(end - 2 * 60 * 1000, "⚠️ Осталось 2 минуты");
+  await schedulePush(end, "⏱️ Время истекло");
+
   await schedulePush(
       end + 30 * 1000,
-      "⚠️ La machine sera libérée automatiquement dans 30 secondes",
+      // eslint-disable-next-line max-len
+      "⚠️ Машина будет автоматически освобождена через 30 секунд для других пользователей",
   );
 
-  // libération forcée
   await scheduleTask(end + 60 * 1000, {
     action: "FORCE_RELEASE",
-    dormId: context.params.dormId,
-    machineId: context.params.machineId,
+    dormId: params.dormId,
+    machineId: params.machineId,
+    countryId: params.countryId,
+    cityId: params.cityId,
+    univId: params.univId,
   });
 }
 
