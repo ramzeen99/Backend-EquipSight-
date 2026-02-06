@@ -1,14 +1,8 @@
 {
   "projects": {
-<<<<<<< HEAD
-    "default": "equipsight"
-  }
-}
-=======
     "default": "equipsight",
     "equipsight": "equipsight"
   },
   "targets": {},
   "etags": {}
 }
->>>>>>> 60e0275dc2ae022b20b64798db17abc73ee197b4
